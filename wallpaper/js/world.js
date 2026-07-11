@@ -52,6 +52,9 @@
   // never populate `buttons` fall back to the old behavior instead of breaking.
   var buttonsReliable = false;
   var lastInput = { type: '-', button: -1, buttons: -1, over: false };
+  // The decisive diagnostic: the most recent left mousedown's button bitmask,
+  // whether it landed over an item, and whether the guard let it arm a click.
+  var lastDown = { buttons: -1, over: false, armed: false };
   var panVel = { x: 0, y: 0 };     // camera px/sec from pan/stir inertia
   var lastPanAt = -1e9;            // performance.now()/1000 of last pan input
 
@@ -544,6 +547,7 @@
       leftDownPos.x = e.clientX;
       leftDownPos.y = e.clientY;
     }
+    if (e.button === 0) lastDown = { buttons: e.buttons, over: !!hovered, armed: leftDown };
   });
 
   window.addEventListener('mouseup', function (e) {
@@ -634,6 +638,7 @@
         stir: { active: stir.active, speed: Math.round(stir.speed) },
         clicks: clicksSeen,
         lastInput: lastInput,
+        lastDown: lastDown,
         buttonsReliable: buttonsReliable,
         speedFactor: speedFactor,
         motionStopped: motionStopped,
