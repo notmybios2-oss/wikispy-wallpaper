@@ -26,7 +26,9 @@ It drifts forever in the background, you can click on anything you see to have a
 
 ## Install (Wallpaper Engine, windows)
 
-REMINDER FOR MYSELF : Add it to the wallpaper engine discovery tab so users don't have to do all this bs for a wallpaper
+~~REMINDER FOR MYSELF : Add it to the wallpaper engine discovery tab so users don't have to do all this bs for a wallpaper~~
+
+Update, uploaded to workshop : https://steamcommunity.com/sharedfiles/filedetails/?id=3762580198
 
 1. Clone or download this repository.
 2. Copy the `wallpaper/` folder into
@@ -59,7 +61,6 @@ Everything is a Wallpaper Engine property — no code editing needed:
 | Parallax depth | on | Three-layer depth illusion |
 | Grab and pan | on | Left-drag steering (middle mouse also works in a browser) |
 | Stir the cosmos | off | Fast pointer sweeps push the world without clicking |
-| Keyword filter | blank | Only show items matching a search (e.g. "space") |
 | Focus + cards | on | Track an object to freeze the drift; left-click for its card (hover-cards optional, off) |
 | Show blocked list | off | Overlay to review and revert blocks |
 | Low power mode | off | Half density + 24 FPS cap for laptops |
