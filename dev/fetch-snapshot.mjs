@@ -1,28 +1,34 @@
 /*
- * Builds wallpaper/snapshot.json: a shuffled slice of the Wiki Spy
- * catalogue used as a last-resort data source on platforms whose
- * browsers enforce CORS against the API (e.g. Plash on macOS, where the
- * wallpaper is served from GitHub Pages). Refreshed weekly by CI.
+ * Builds wallpaper/snapshot/: the FULL Wiki Spy catalogue split into
+ * ~3000-object chunks, used as the data source on platforms whose browsers
+ * enforce CORS against the API (Plash/GitHub Pages on macOS). The wallpaper
+ * rotates through chunks at runtime, so memory stays small while the whole
+ * catalogue gets traversed.
  *
- * Usage: node dev/fetch-snapshot.mjs [count]   (default 3000)
+ * One full run = ~catalogue/150 requests (~300), spaced politely.
+ * Usage: node dev/fetch-snapshot.mjs
  */
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const API = 'https://wiki-spy-uaew8.ondigitalocean.app';
-const TARGET = Number(process.argv[2]) || 3000;
-const OUT = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'wallpaper', 'snapshot.json');
+const CHUNK_SIZE = 3000;
+const MAX_REQUESTS = 400;
+const OUT_DIR = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'wallpaper', 'snapshot');
 
 const byId = new Map();
-let cursor = Math.random();
+let cursor = 0;
 let requests = 0;
+let wrapped = false;
+let lastSize = -1;
+let stalls = 0;
 
-while (byId.size < TARGET && requests < 40) {
+while (requests < MAX_REQUESTS && !wrapped && stalls < 3) {
   const res = await fetch(`${API}/objects?cursor=${cursor}&limit=150`, {
     headers: { accept: 'application/json' }
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} at request ${requests}`);
   const data = await res.json();
   requests++;
   for (const o of data.objects || []) {
@@ -41,10 +47,30 @@ while (byId.size < TARGET && requests < 40) {
       mask: o.mask
     });
   }
-  cursor = data.wrap || data.nextCursor === undefined ? Math.random() : data.nextCursor;
-  await new Promise(r => setTimeout(r, 400)); // polite spacing
+  if (data.wrap) wrapped = true;
+  if (data.nextCursor !== undefined) cursor = data.nextCursor;
+  stalls = byId.size === lastSize ? stalls + 1 : 0;
+  lastSize = byId.size;
+  if (requests % 25 === 0) console.log(`${byId.size} objects after ${requests} requests…`);
+  await new Promise(r => setTimeout(r, 250));
 }
 
 const objects = [...byId.values()];
-writeFileSync(OUT, JSON.stringify({ v: 1, savedAt: new Date().toISOString(), total: objects.length, objects }));
-console.log(`snapshot: ${objects.length} objects, ${requests} requests, ${(JSON.stringify({ objects }).length / 1048576).toFixed(1)} MB`);
+// deterministic shuffle-free write; runtime shuffles per session
+rmSync(OUT_DIR, { recursive: true, force: true });
+mkdirSync(OUT_DIR, { recursive: true });
+const chunks = [];
+for (let i = 0; i < objects.length; i += CHUNK_SIZE) {
+  chunks.push(objects.slice(i, i + CHUNK_SIZE));
+}
+chunks.forEach((c, i) => {
+  writeFileSync(join(OUT_DIR, `chunk-${String(i).padStart(3, '0')}.json`), JSON.stringify({ objects: c }));
+});
+writeFileSync(join(OUT_DIR, 'index.json'), JSON.stringify({
+  v: 2,
+  savedAt: new Date().toISOString(),
+  total: objects.length,
+  chunkCount: chunks.length,
+  chunkSize: CHUNK_SIZE
+}));
+console.log(`snapshot: ${objects.length} objects in ${chunks.length} chunks (${requests} requests, wrapped=${wrapped})`);

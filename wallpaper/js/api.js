@@ -14,8 +14,9 @@
 
   var DIRECT_BASE = 'https://wiki-spy-uaew8.ondigitalocean.app';
   var PROXY_BASE = '/wsapi';
-  var SNAPSHOT_URL = 'snapshot.json'; // bundled catalogue slice: last resort
-                                      // for CORS-strict hosts (Plash/Pages)
+  var SNAPSHOT_DIR = 'snapshot/';    // bundled FULL catalogue in rotating
+                                     // chunks: the data source for
+                                     // CORS-strict hosts (Plash/Pages)
 
   var BATCH_SIZE = 100;        // API serves up to 150; one big request is far
                                // kinder at Workshop scale than many small ones
@@ -151,8 +152,45 @@
     });
   }
 
-  var snapshotPool = null;
-  var snapshotIdx = 0;
+  /*
+   * Snapshot mode: the full catalogue lives in ~3000-object chunk files.
+   * One chunk is held in memory at a time; when it runs dry the next one
+   * (prefetched in the background, random order, all chunks before any
+   * repeat) takes its place. Whole catalogue, small memory.
+   */
+  var snap = {
+    manifest: null,
+    order: [],      // shuffled chunk indices for this cycle
+    orderPos: 0,
+    pool: null,     // current chunk's objects, shuffled
+    poolIdx: 0,
+    nextPool: null, // prefetched next chunk
+    loading: false
+  };
+
+  function chunkUrl(i) {
+    var n = String(i);
+    while (n.length < 3) n = '0' + n;
+    return SNAPSHOT_DIR + 'chunk-' + n + '.json';
+  }
+
+  function nextChunkIndex() {
+    if (snap.orderPos >= snap.order.length) {
+      snap.order = shuffled(snap.order);
+      snap.orderPos = 0;
+    }
+    return snap.order[snap.orderPos++];
+  }
+
+  function prefetchNextChunk() {
+    if (snap.loading || snap.nextPool || snap.manifest.chunkCount < 2) return;
+    snap.loading = true;
+    fetchJson(chunkUrl(nextChunkIndex())).then(function (data) {
+      snap.nextPool = shuffled(data.objects || []);
+    }).catch(function () { /* retried on next refill */ }).then(function () {
+      snap.loading = false;
+    });
+  }
 
   function resolveBase() {
     var probePath = '/objects?cursor=0.5&limit=1';
@@ -165,29 +203,40 @@
         state.baseLabel = 'proxy';
       });
     }).catch(function () {
-      return fetchJson(SNAPSHOT_URL).then(function (data) {
-        if (!data || !Array.isArray(data.objects) || !data.objects.length) {
-          throw new Error('empty snapshot');
-        }
-        snapshotPool = shuffled(data.objects);
+      return fetchJson(SNAPSHOT_DIR + 'index.json').then(function (manifest) {
+        if (!manifest || !manifest.chunkCount) throw new Error('bad snapshot manifest');
+        snap.manifest = manifest;
+        snap.order = shuffled(Array.from({ length: manifest.chunkCount }, function (_, i) { return i; }));
+        snap.orderPos = 0;
+        return fetchJson(chunkUrl(nextChunkIndex()));
+      }).then(function (data) {
+        snap.pool = shuffled(data.objects || []);
+        snap.poolIdx = 0;
         state.base = 'snapshot';
         state.baseLabel = 'snapshot';
-        state.total = data.objects.length;
+        state.total = snap.manifest.total;
+        prefetchNextChunk();
       });
     });
   }
 
-  /* Snapshot mode: no network at all, walk the shuffled pool forever. */
   function refillFromSnapshot() {
-    if (state.queue.length >= LOW_WATER) return;
-    for (var i = 0; i < BATCH_SIZE && snapshotPool.length; i++) {
-      if (snapshotIdx >= snapshotPool.length) {
-        snapshotPool = shuffled(snapshotPool);
-        snapshotIdx = 0;
+    if (state.queue.length >= LOW_WATER || !snap.pool) return;
+    for (var i = 0; i < BATCH_SIZE; i++) {
+      if (snap.poolIdx >= snap.pool.length) {
+        if (snap.nextPool && snap.nextPool.length) {
+          snap.pool = snap.nextPool;   // rotate to the prefetched chunk
+          snap.nextPool = null;
+          prefetchNextChunk();
+        } else {
+          snap.pool = shuffled(snap.pool); // next chunk not ready: re-walk
+          prefetchNextChunk();
+        }
+        snap.poolIdx = 0;
       }
-      state.queue.push(snapshotPool[snapshotIdx++]);
+      state.queue.push(snap.pool[snap.poolIdx++]);
+      state.fetchedCount++;
     }
-    state.fetchedCount = snapshotIdx;
   }
 
   function backoffDelay() {
