@@ -38,11 +38,6 @@
       'stir: ' + (WSW.settings.stirEnabled ? (world.stir.active ? 'ACTIVE' : 'idle') : 'off') +
         '  input seen L/M/R/wheel: ' + world.clicks.left + '/' + world.clicks.middle + '/' +
         world.clicks.right + '/' + world.clicks.wheel,
-      'LAST DOWN: buttons=' + world.lastDown.buttons +
-        ' over=' + (world.lastDown.over ? 'ITEM' : 'empty') +
-        ' armed=' + world.lastDown.armed +
-        '  guard: ' + (world.buttonsReliable ? 'ARMED' : 'off'),
-      'EVENTS (d/m/u + buttons): ' + (world.inputLog || '—'),
       'hover: ' + (world.hovered || '—') +
         '  interaction: ' + (s.interactionEnabled ? 'on' : 'off') +
         '  cards: ' + (s.cardsEnabled ? 'on' : 'off') +
