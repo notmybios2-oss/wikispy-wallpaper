@@ -46,7 +46,8 @@
       '<div class="card-blockchoice" hidden>' +
         '<button class="card-block-item" type="button">Block this item</button>' +
         '<button class="card-block-term" type="button"></button>' +
-        '<button class="card-block-cancel" type="button" title="Cancel">↩</button>' +
+        '<button class="card-block-broad" type="button"></button>' +
+        '<button class="card-block-cancel" type="button" title="Cancel">↩ Cancel</button>' +
       '</div>';
     document.body.appendChild(el);
     parts = {
@@ -60,6 +61,7 @@
       choice: el.querySelector('.card-blockchoice'),
       blockItem: el.querySelector('.card-block-item'),
       blockTerm: el.querySelector('.card-block-term'),
+      blockBroad: el.querySelector('.card-block-broad'),
       blockCancel: el.querySelector('.card-block-cancel')
     };
     parts.wiki.addEventListener('click', function (e) {
@@ -83,7 +85,13 @@
     parts.blockTerm.addEventListener('click', function (e) {
       e.stopPropagation();
       var term = parts.blockTerm.dataset.term;
-      if (term && WSW.blocks) WSW.blocks.blockTerm(term);
+      if (term && WSW.blocks) WSW.blocks.blockTerm(term, 'title');
+      hide();
+    });
+    parts.blockBroad.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var term = parts.blockBroad.dataset.term;
+      if (term && WSW.blocks) WSW.blocks.blockTerm(term, 'broad');
       hide();
     });
   }
@@ -134,10 +142,18 @@
     parts.footer.hidden = !!on;
     parts.choice.hidden = !on;
     if (on && current) {
+      // Specific: head noun of the title (e.g. "xanthogramma").
       var term = WSW.blocks ? WSW.blocks.categoryTerm(current.title) : null;
       parts.blockTerm.style.display = term ? '' : 'none';
       parts.blockTerm.textContent = term ? 'Block “' + term + '”' : '';
       parts.blockTerm.dataset.term = term || '';
+      // Broad: category word from the description (e.g. "spider"). Only
+      // shown when it exists and differs from the specific term.
+      var broad = WSW.blocks && WSW.blocks.broadTerm ? WSW.blocks.broadTerm(current.src) : null;
+      var showBroad = broad && broad !== term;
+      parts.blockBroad.style.display = showBroad ? '' : 'none';
+      parts.blockBroad.textContent = showBroad ? 'Block all “' + broad + '”' : '';
+      parts.blockBroad.dataset.term = showBroad ? broad : '';
     }
   }
 
